@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Podyumplus</title>
+    <title>Görsel Yükleme Aracı</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
@@ -713,8 +713,354 @@
 </head>
 <body>
     <div class="container">
-        <a>Yapim asamasinda</a>
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">🚀</div>
+                <div class="logo-text">Uploader</div>
+            </div>
+            <p class="subtitle">Görsellerinizi webhook'a kolayca yükleyin</p>
+            <button class="settings-btn" id="settingsBtn" onclick="openSettings()">
+                <span>⚙️</span>
+                Ayarlar
+            </button>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal-overlay" id="modalOverlay" onclick="closeSettings()"></div>
+        <div class="modal" id="settingsModal">
+            <div class="modal-header">
+                <h2 class="modal-title">⚙️ Webhook Ayarları</h2>
+                <button class="close-btn" onclick="closeSettings()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label class="input-label" for="webhookUrl">Webhook URL</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔗</span>
+                        <input 
+                            type="text" 
+                            id="webhookUrl" 
+                            class="input-field" 
+                            placeholder="https://your-instance.com/webhook/..."
+                            value="">
+                        <span class="status-indicator" id="urlStatus"></span>
+                    </div>
+                    <div class="input-hint">
+                        Size verilen webhook URL'sini buraya yapıştırın
+                    </div>
+                </div>
+                <div class="saved-url" id="savedUrlDisplay" style="display: none;">
+                    <div class="saved-label">✅ Kayıtlı URL:</div>
+                    <div class="saved-value" id="savedUrlText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSettings()">İptal</button>
+                <button class="btn btn-primary" onclick="saveSettings()">
+                    <span>💾</span>
+                    Kaydet
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="section-title">Görsel Yükleme</h2>
+            
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">📸</div>
+                <div class="drop-zone-text">Görselleri buraya sürükle bırak</div>
+                <div class="drop-zone-hint">veya dosya seçmek için tıkla</div>
+                <input type="file" id="fileInput" class="file-input" multiple accept="image/*">
+                <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+                    <span>📁</span>
+                    Dosya Seç
+                </button>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">Seçilen Dosya</div>
+                    <div class="stat-value" id="fileCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Toplam Boyut</div>
+                    <div class="stat-value" id="totalSize">0 MB</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Durum</div>
+                    <div class="stat-value" id="uploadState">Hazır</div>
+                </div>
+            </div>
+
+            <div class="preview-grid" id="previewGrid"></div>
+
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <div class="upload-status" id="uploadStatus"></div>
+
+            <div style="margin-top: 30px; text-align: center;">
+                <button class="btn btn-primary" id="uploadBtn" onclick="uploadImages()" disabled>
+                    <span>⬆️</span>
+                    Görselleri Yükle
+                </button>
+            </div>
+        </div>
     </div>
+
+    <script>
+        let selectedFiles = [];
+        let currentWebhookUrl = '';
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const previewGrid = document.getElementById('previewGrid');
+        const webhookUrlInput = document.getElementById('webhookUrl');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const urlStatus = document.getElementById('urlStatus');
+        const modal = document.getElementById('settingsModal');
+        const modalOverlay = document.getElementById('modalOverlay');
+
+        // Modal fonksiyonları
+        function openSettings() {
+            modal.classList.add('active');
+            modalOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            // Kaydedilmiş URL'yi göster
+            const savedUrl = localStorage.getItem('webhookUrl');
+            if (savedUrl) {
+                webhookUrlInput.value = savedUrl;
+                document.getElementById('savedUrlText').textContent = savedUrl;
+                document.getElementById('savedUrlDisplay').style.display = 'block';
+                updateUrlStatus();
+            }
+        }
+
+        function closeSettings() {
+            modal.classList.remove('active');
+            modalOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        function saveSettings() {
+            const url = webhookUrlInput.value.trim();
+            
+            if (!url) {
+                showStatus('⚠️ Lütfen bir webhook URL\'si girin!', 'error');
+                return;
+            }
+            
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                showStatus('⚠️ Geçerli bir URL girin (http:// veya https:// ile başlamalı)', 'error');
+                return;
+            }
+            
+            // URL'yi kaydet
+            localStorage.setItem('webhookUrl', url);
+            currentWebhookUrl = url;
+            
+            // UI'yi güncelle
+            document.getElementById('savedUrlText').textContent = url;
+            document.getElementById('savedUrlDisplay').style.display = 'block';
+            
+            // Modal'ı kapat
+            closeSettings();
+            
+            // Başarı mesajı göster
+            showStatus('✅ Webhook URL başarıyla kaydedildi!', 'success');
+            
+            // Upload butonunu güncelle
+            updateUploadButton();
+        }
+
+        function updateUrlStatus() {
+            const url = webhookUrlInput.value.trim();
+            if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                urlStatus.classList.add('active');
+            } else {
+                urlStatus.classList.remove('active');
+            }
+        }
+
+        // Webhook URL kontrolü
+        webhookUrlInput.addEventListener('input', updateUrlStatus);
+
+        // ESC tuşu ile modal'ı kapat
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeSettings();
+            }
+        });
+
+        // Sayfa yüklendiğinde kaydedilmiş URL'yi yükle
+        window.addEventListener('load', function() {
+            const savedUrl = localStorage.getItem('webhookUrl');
+            if (savedUrl) {
+                currentWebhookUrl = savedUrl;
+            }
+        });
+
+        // Drag and drop olayları
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+            handleFiles(files);
+        });
+
+        dropZone.addEventListener('click', (e) => {
+            if (e.target === dropZone || e.target.closest('.drop-zone-icon') || e.target.closest('.drop-zone-text')) {
+                fileInput.click();
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        });
+
+        function handleFiles(files) {
+            files.forEach(file => {
+                if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    selectedFiles.push(file);
+                }
+            });
+            updatePreview();
+            updateStats();
+            updateUploadButton();
+        }
+
+        function updatePreview() {
+            previewGrid.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'preview-item';
+                    previewItem.innerHTML = `
+                        <img src="${e.target.result}" alt="${file.name}" class="preview-image">
+                        <div class="preview-overlay">
+                            <button class="remove-btn" onclick="removeFile(${index})">🗑️ Kaldır</button>
+                        </div>
+                    `;
+                    previewGrid.appendChild(previewItem);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updatePreview();
+            updateStats();
+            updateUploadButton();
+        }
+
+        function updateStats() {
+            document.getElementById('fileCount').textContent = selectedFiles.length;
+            const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+            document.getElementById('totalSize').textContent = (totalSize / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function updateUploadButton() {
+            const hasFiles = selectedFiles.length > 0;
+            const hasUrl = currentWebhookUrl.length > 0;
+            uploadBtn.disabled = !(hasFiles && hasUrl);
+        }
+
+        async function uploadImages() {
+            if (!currentWebhookUrl) {
+                showStatus('⚠️ Lütfen önce ayarlardan webhook URL\'sini kaydedin!', 'error');
+                openSettings();
+                return;
+            }
+
+            if (selectedFiles.length === 0) {
+                showStatus('⚠️ Lütfen en az bir görsel seçin!', 'error');
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            progressBar.classList.add('active');
+            uploadStatus.classList.remove('show');
+            document.getElementById('uploadState').textContent = 'Yükleniyor...';
+
+            try {
+                const formData = new FormData();
+                selectedFiles.forEach((file, index) => {
+                    formData.append(`image${index}`, file);
+                });
+
+                // İlerleme simülasyonu
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += 5;
+                    if (progress >= 90) {
+                        clearInterval(progressInterval);
+                    }
+                    progressFill.style.width = progress + '%';
+                }, 100);
+
+                const response = await fetch(currentWebhookUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+
+                if (response.ok) {
+                    showStatus(`✅ ${selectedFiles.length} görsel başarıyla yüklendi!`, 'success');
+                    document.getElementById('uploadState').textContent = 'Başarılı';
+                    
+                    // Başarılı yüklemeden sonra dosyaları temizle
+                    setTimeout(() => {
+                        selectedFiles = [];
+                        updatePreview();
+                        updateStats();
+                        updateUploadButton();
+                        progressBar.classList.remove('active');
+                        progressFill.style.width = '0%';
+                        document.getElementById('uploadState').textContent = 'Hazır';
+                    }, 2000);
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                console.error('Yükleme hatası:', error);
+                showStatus('❌ Yükleme sırasında hata oluştu: ' + error.message, 'error');
+                document.getElementById('uploadState').textContent = 'Hata';
+                progressBar.classList.remove('active');
+                progressFill.style.width = '0%';
+            } finally {
+                uploadBtn.disabled = false;
+                updateUploadButton();
+            }
+        }
+
+        function showStatus(message, type) {
+            uploadStatus.textContent = message;
+            uploadStatus.className = 'upload-status ' + type + ' show';
+            
+            setTimeout(() => {
+                uploadStatus.classList.remove('show');
+            }, 5000);
+        }
+    </script>
+
 
 </body>
 </html>
